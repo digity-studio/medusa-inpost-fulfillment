@@ -21,6 +21,16 @@ export interface InPostPluginOptions {
   offerPollAttempts?: number
   /** Pause before each of those reads, in milliseconds. Default: 2000. */
   offerPollIntervalMs?: number
+  /**
+   * Before creating a shipment, `createFulfillment` looks for a shipment that
+   * already exists on ShipX for the same order (same `reference`, not
+   * canceled) and refuses to create a second one. Default: `true`.
+   *
+   * Set it to `false` if you fulfil one order in several InPost shipments
+   * (partial fulfillments share the order's `reference`, so the check cannot
+   * tell them apart from a duplicate) or run your own check.
+   */
+  duplicateCheck?: boolean
 }
 
 export type InPostLabelFormat = "pdf" | "zpl"
@@ -133,6 +143,13 @@ export interface InPostShipmentResponse {
   selected_offer?: InPostOffer
   created_at?: string
   updated_at?: string
+}
+
+export interface InPostShipmentListResponse {
+  items: InPostShipmentResponse[]
+  count: number
+  page: number
+  per_page: number
 }
 
 export interface InPostDispatchOrderResponse {

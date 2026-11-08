@@ -4,6 +4,7 @@ import {
   InPostDispatchOrderResponse,
   InPostLabelFormat,
   InPostPluginOptions,
+  InPostShipmentListResponse,
   InPostShipmentRequest,
   InPostShipmentResponse,
 } from "./types";
@@ -48,7 +49,9 @@ export class InPostShipXClient {
         body: body !== undefined ? JSON.stringify(body) : undefined,
       },
       this.requestTimeoutMs,
-      `${method} ${path}`
+      // Without the query: listShipments puts the receiver's e-mail there,
+      // and this label ends up in the timeout error's message.
+      `${method} ${path.split("?")[0]}`
     );
 
     if (!response.ok) {
@@ -127,6 +130,24 @@ export class InPostShipXClient {
     return this.request<InPostShipmentResponse>(
       "GET",
       `/v1/shipments/${id}`
+    );
+  }
+
+  /**
+   * One page of the organization's shipments. `query` takes ShipX's list
+   * filters as they are (`receiver_email`, `created_at_gteq`, `status`,
+   * `page`, ...). There is no `reference` filter, so match it on the result.
+   */
+  async listShipments(
+    query: Record<string, string | number> = {}
+  ): Promise<InPostShipmentListResponse> {
+    const params = new URLSearchParams(
+      Object.entries(query).map(([key, value]) => [key, String(value)])
+    ).toString();
+
+    return this.request<InPostShipmentListResponse>(
+      "GET",
+      `/v1/organizations/${this.organizationId}/shipments${params ? `?${params}` : ""}`
     );
   }
 

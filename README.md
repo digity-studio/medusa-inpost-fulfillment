@@ -341,6 +341,19 @@ The InPost Returns REST API exposes return ticket lookup through the list endpoi
 4. **Return data** — stores `shipment_id`, `tracking_number`, and `dispatch_order_id` in the fulfillment data
 5. **Local history** — after Medusa emits `order.fulfillment_created`, the plugin upserts an `InpostShipment` record in the `inpost` module
 
+### Duplicate shipments
+
+A timeout does not mean ShipX did not create the shipment. If `createShipment` (or the buy that follows) times out after ShipX has accepted it, the fulfillment fails, and a retry of **Create fulfillment** would create a second shipment for the same order.
+
+So before creating a shipment, the plugin looks for one that already exists for the order: same `reference` (the order ID), any status other than `canceled`. ShipX's shipment list has no `reference` filter, so the lookup narrows by the receiver's e-mail and by creation time (from a day before the order) and matches `reference` on the result, up to 10 pages.
+
+- **A shipment is found:** the fulfillment fails with a `duplicate_error` that names the shipment ID and status. Buy or cancel that shipment in [InPost Manager](https://manager.paczkomaty.pl) instead of creating another one. The plugin does not reuse it on its own.
+- **The lookup fails** (timeout, API error, more than 10 pages): the fulfillment fails too, and no shipment is created.
+
+If you fulfil one order in several InPost shipments, the check sees the earlier shipment as a duplicate, because partial fulfillments share the order's `reference`. Set `duplicateCheck: false` in that case, or if you run a check of your own.
+
+When a fulfillment fails after the shipment was created (offers, buy, or the courier dispatch order), the error log names the shipment ID.
+
 ### Cancellation
 
 When a fulfillment is cancelled in Medusa, the plugin attempts to cancel the corresponding shipment in InPost.
@@ -488,6 +501,7 @@ export const config: SubscriberConfig = {
 | `returns.magicLinkBaseUrl`  | `string`                         | No          | —               | Absolute storefront URL used to build return-session magic links |
 | `returns.receiver`          | `object`                         | No          | account default | Receiver override for return tickets                             |
 | `returns.description`       | `string`                         | No          | —               | Description shown to the return sender                           |
+| `duplicateCheck`            | `boolean`                        | No          | `true`          | Refuse to create a shipment when one already exists for the order, see [Duplicate shipments](#duplicate-shipments) |
 | `sender`                    | `object`                         | For courier | —               | Sender details (required for courier shipments)                  |
 | `sender.company_name`       | `string`                         | For courier | —               | Sender company name                                              |
 | `sender.first_name`         | `string`                         | For courier | —               | Sender first name                                                |
