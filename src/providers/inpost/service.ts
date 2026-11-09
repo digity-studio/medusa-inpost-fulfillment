@@ -15,6 +15,7 @@ import {
 } from "@medusajs/types";
 import { canCancelInPostShipmentViaApi } from "../../lib/admin-shipments";
 import { InPostShipXClient } from "../../lib/client";
+import { assertNoExistingShipment } from "../../lib/duplicate-shipments";
 import {
   buildShipmentRequest,
   buildTrackingUrl,
@@ -213,16 +214,29 @@ class InPostFulfillmentProviderService extends AbstractFulfillmentProviderServic
     const isLockerService =
       serviceType === InPostService.inpost_locker_standard;
     const labelFormat = resolveLabelFormat(this.options, fulfillmentData);
+    const reference = order?.id || fulfillment.id;
     const shipmentRequest = buildShipmentRequest({
       data: fulfillmentData,
       options: this.options,
       shippingAddress,
       email,
-      reference: order?.id || fulfillment.id,
+      reference,
     });
 
+    // Known once ShipX has created the shipment, so a failure after that point
+    // (offers, buy, dispatch order) says which shipment it left behind.
+    let shipmentId: number | undefined;
+
     try {
+      if (this.options.duplicateCheck !== false && reference) {
+        await assertNoExistingShipment(
+          (query) => this.client.listShipments(query),
+          { reference, email, createdAt: order?.created_at }
+        );
+      }
+
       const shipment = await this.client.createShipment(shipmentRequest);
+      shipmentId = shipment.id;
 
       // Poll until shipment is confirmed or offers are ready
       let current = await waitForOffers(
@@ -295,7 +309,12 @@ class InPostFulfillmentProviderService extends AbstractFulfillmentProviderServic
           : [],
       };
     } catch (error) {
-      this.logger.error("InPost createFulfillment failed", error as Error);
+      this.logger.error(
+        shipmentId
+          ? `InPost createFulfillment failed after creating shipment ${shipmentId} on ShipX`
+          : "InPost createFulfillment failed",
+        error as Error
+      );
       throw error;
     }
   }
